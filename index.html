@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grupo Jumex · Equipos de Impresión</title>
+  <link rel="icon" type="image/png" href="logo-jumex.png" />
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            jnavy: '#0b1f8f',
+            jnavy2: '#061463',
+            jsky: '#5fb4e5',
+            jleaf: '#7cc242',
+            jorange: '#f28c28'
+          },
+          fontFamily: { sans: ['Montserrat', 'ui-sans-serif', 'system-ui'] }
+        }
+      }
+    };
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <!-- Agrupación de marcadores -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
+
+  <!-- PapaParse (CSV de Google Sheets) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+  <link rel="stylesheet" href="styles.css?v=3.0" />
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans antialiased">
+
+  <!-- ============ HEADER ============ -->
+  <header class="sticky top-0 z-[1000] px-3 sm:px-6 pt-3">
+    <div class="max-w-7xl mx-auto bg-white rounded-2xl shadow-md px-4 sm:px-6 py-3 flex items-center gap-4 flex-wrap">
+      <a href="#ubicaciones" class="flex items-center gap-3 shrink-0">
+        <img src="logo-jumex.png" alt="Grupo Jumex" class="brand-logo" />
+      </a>
+      <span class="hidden md:block h-8 w-px bg-slate-200"></span>
+      <p class="hidden md:block text-sm text-slate-500 font-medium">Inventario de equipos de impresión</p>
+
+      <nav class="ml-auto flex items-center gap-1" id="mainNav">
+        <a href="#ubicaciones" data-view="ubicaciones" class="nav-link">Ubicaciones</a>
+        <a href="#dashboard" data-view="dashboard" class="nav-link">Dashboard</a>
+      </nav>
+
+      <div class="flex items-center gap-2">
+        <span id="dataBadge" class="hidden sm:inline-flex text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 text-slate-500">Cargando…</span>
+        <button id="btnReload" title="Recargar datos" class="p-2 rounded-lg bg-jsky text-white hover:brightness-95 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M4 4v6h6M20 20v-6h-6"/><path d="M20 10a8 8 0 0 0-14.9-3M4 14a8 8 0 0 0 14.9 3"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-3 sm:px-6 py-6">
+
+    <!-- ============ VISTA: UBICACIONES ============ -->
+    <section id="view-ubicaciones" class="view">
+      <div class="hero rounded-2xl p-6 sm:p-8 mb-6 text-white">
+        <h1 class="text-2xl sm:text-3xl font-extrabold">Plantas y sedes</h1>
+        <p class="mt-1 text-white/85 max-w-2xl text-sm sm:text-base">Selecciona una sede en el mapa para ver su plano, departamentos y equipos de impresión asignados.</p>
+        <div class="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-2xl" id="kpiStrip">
+          <div class="stat"><span class="stat-n" id="stEstados">–</span><span class="stat-l">Estados</span></div>
+          <div class="stat"><span class="stat-n" id="stPlantas">–</span><span class="stat-l">Sedes</span></div>
+          <div class="stat"><span class="stat-n" id="stDeptos">–</span><span class="stat-l">Departamentos</span></div>
+          <div class="stat"><span class="stat-n" id="stEquipos">–</span><span class="stat-l">Equipos</span></div>
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-3 gap-6">
+        <!-- Mapa -->
+        <div class="lg:col-span-2 card p-0 overflow-hidden">
+          <div id="map" class="w-full h-[420px] sm:h-[520px]"></div>
+        </div>
+
+        <!-- Lista de plantas -->
+        <aside class="card flex flex-col max-h-[520px]">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="font-bold text-jnavy">Ubicaciones</h2>
+            <span class="text-xs text-slate-400" id="plantCount"></span>
+          </div>
+          <div id="estadoChip"></div>
+          <div id="unitFilter" class="flex flex-wrap gap-1.5 mb-3"></div>
+          <div class="relative mb-3">
+            <input id="searchInput" type="search" placeholder="Buscar sede, estado, depto., modelo o serie…"
+                   class="w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-jsky" />
+            <svg class="w-4 h-4 absolute left-3 top-3 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          </div>
+          <ul id="plantList" class="space-y-2 overflow-y-auto pr-1 flex-1"></ul>
+        </aside>
+      </div>
+
+      <!-- Detalle de planta -->
+      <!-- ============ DISTRIBUCIÓN DE LA PLANTA (vista nacional; se oculta al elegir una sede) ============ -->
+      <section id="distNacional" class="mt-6">
+      <div class="card mb-5">
+        <div class="flex flex-wrap items-center gap-3 justify-between">
+          <div>
+            <h2 class="text-xl sm:text-2xl font-extrabold text-jnavy">Distribución de la planta</h2>
+            <p class="text-sm font-semibold text-slate-600 mt-0.5">Distribución Nacional de Sedes y Plantas – Grupo Jumex</p>
+            <p class="text-xs text-slate-400 mt-0.5" id="natSubtitle"></p>
+          </div>
+          <div class="seg" id="natToggle">
+            <button data-mode="esquema" class="seg-btn">Esquema</button>
+            <button data-mode="plano" class="seg-btn active">Plano</button>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 mt-4">
+          <div id="natUnits" class="flex flex-wrap gap-1.5"></div>
+          <select id="natEstado" class="ml-auto rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-jsky">
+            <option value="">Todos los estados</option>
+          </select>
+          <input id="natSearch" type="search" placeholder="Buscar sede o estado…"
+                 class="w-full sm:w-64 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-jsky" />
+        </div>
+      </div>
+
+      <!-- Mapa nacional + sedes destacadas -->
+      <div class="grid lg:grid-cols-[1.25fr_1fr] gap-5 mb-6">
+        <div class="card relative">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="font-bold text-jnavy">Mapa nacional de sedes</h2>
+            <span class="text-xs text-slate-400">Clic en un pin para ver su plano</span>
+          </div>
+          <div id="natMapWrap" class="relative">
+            <div id="natMap"></div>
+            <div id="natPop" class="nat-pop hidden"></div>
+          </div>
+          <div id="natMapLegend" class="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-slate-600"></div>
+        </div>
+        <div>
+          <h2 class="font-bold text-jnavy mb-2">Sedes con más impresoras</h2>
+          <div id="natFeatured" class="grid grid-cols-2 gap-3"></div>
+        </div>
+      </div>
+
+      <h2 class="font-bold text-jnavy mb-3">Todas las sedes</h2>
+      <div class="grid xl:grid-cols-[1fr_250px] gap-5 items-start">
+        <div id="natGrid" class="grid sm:grid-cols-2 2xl:grid-cols-3 gap-5"></div>
+        <aside id="natLegend" class="card xl:sticky xl:top-28 order-first xl:order-none"></aside>
+      </div>
+          </section>
+
+      <section id="plantDetail" class="mt-6 hidden">
+        <div class="card">
+          <div class="flex flex-wrap items-start gap-4 justify-between border-b border-slate-100 pb-4 mb-5">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wider text-jsky" id="pdUnit">Sede seleccionada</p>
+              <h2 id="pdName" class="text-2xl font-extrabold text-jnavy"></h2>
+              <p id="pdCoords" class="text-xs text-slate-400 mt-0.5"></p>
+            </div>
+            <div class="flex gap-2">
+              <span class="chip bg-jnavy/10 text-jnavy" id="pdDeptCount"></span>
+              <span class="chip bg-jleaf/15 text-green-700" id="pdEqCount"></span>
+              <button id="btnClose" class="chip bg-jnavy text-white hover:brightness-110">← Distribución nacional</button>
+            </div>
+          </div>
+
+          <div class="grid lg:grid-cols-5 gap-6">
+            <!-- Plano -->
+            <div class="lg:col-span-3">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="font-bold text-slate-700">Distribución de la planta</h3>
+                <div class="seg" id="planoToggle">
+                  <button data-mode="esquema" class="seg-btn">Esquema</button>
+                  <button data-mode="plano" class="seg-btn active">Plano</button>
+                </div>
+              </div>
+              <div id="planoWrap" class="plano-wrap"></div>
+              <p class="text-xs text-slate-400 mt-2">Haz clic en un área del plano o del esquema para ver sus impresoras.</p>
+            </div>
+
+            <!-- Departamentos y equipos -->
+            <div class="lg:col-span-2">
+              <h3 class="font-bold text-slate-700 mb-2">Departamentos</h3>
+              <div id="deptList" class="flex flex-wrap gap-2 mb-5"></div>
+
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="font-bold text-slate-700" id="eqTitle">Equipos de impresión</h3>
+              </div>
+              <div id="eqList" class="space-y-3 max-h-[440px] overflow-y-auto pr-1"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <!-- ============ VISTA: DASHBOARD (Etapa 2) ============ -->
+    <section id="view-dashboard" class="view hidden">
+      <div class="card text-center py-16 relative overflow-hidden">
+        <div class="dash-bg" aria-hidden="true"></div>
+        <div class="relative">
+          <div class="mx-auto w-16 h-16 rounded-2xl bg-jnavy/10 grid place-items-center mb-4">
+            <svg class="w-8 h-8 text-jnavy" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+          </div>
+          <h2 class="text-2xl font-extrabold text-jnavy">Dashboard</h2>
+          <p class="mt-2 text-slate-500 font-medium">Módulo en desarrollo para KPIs</p>
+          <div class="mt-8 grid grid-cols-2 md:grid-cols-4 gap-3 max-w-3xl mx-auto opacity-60">
+            <div class="skeleton h-20"></div><div class="skeleton h-20"></div>
+            <div class="skeleton h-20"></div><div class="skeleton h-20"></div>
+            <div class="skeleton h-40 col-span-2"></div><div class="skeleton h-40 col-span-2"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="text-center text-xs text-slate-400 pb-8">
+    <b>Versión 3.0</b> · Datos: Google Sheets · Inventario de equipos · <span id="lastUpdate"></span>
+  </footer>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="estados-mx.js?v=3.0"></script>
+  <script src="plano.js?v=3.0"></script>
+  <script src="app.js?v=3.0"></script>
+</body>
+</html>
